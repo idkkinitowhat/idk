@@ -1,60 +1,64 @@
---[[
-    ReanimateGui LocalScript
-    - WARNING: R6 ONLY! This script only works for R6 avatars.
-    - Inserts a dummy from asset 8246626421, or creates one if insertion fails
-    - Dummy welds itself to player character (player is not reset or killed)
-    - Unwelds player character before welding
-    - Synchronizes animations and movement
-    - Handles accessories, hats, cleanup, GUI feedback, and supports multiple reanimations
-    - All logic runs locally for the player
---]]
+local Reanimator = Instance.new("ScreenGui")
+Reanimator.Name = "Reanimator"
+Reanimator.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+Reanimator.Parent = game.StarterGui
 
-local FAST_SPEED = 250 -- Change this value to make the dummy/player even faster
+local Reanim = Instance.new("TextButton")
+Reanim.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+Reanim.TextColor3 = Color3.fromRGB(0, 0, 0)
+Reanim.BorderColor3 = Color3.fromRGB(0, 0, 0)
+Reanim.Text = "Re animate - R6 ONLY"
+Reanim.AnchorPoint = Vector2.new(0.5, 1)
+Reanim.Name = "Reanim"
+Reanim.Position = UDim2.new(0.5, 0, 1, 0)
+Reanim.Size = UDim2.new(0, 200, 0, 50)
+Reanim.BorderSizePixel = 0
+Reanim.TextSize = 14
+Reanim.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Reanim.Parent = Reanimator
 
-local Players = game:GetService("Players")
+local ReanimatorGuiLogic = Instance.new("LocalScript")
+ReanimatorGuiLogic.Name = "ReanimatorGuiLogic"
+ReanimatorGuiLogic.Source = "local Players = game:GetService("Players")
 local InsertService = game:GetService("InsertService")
 local LocalPlayer = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
 
--- GUI Setup
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "ReanimateScreenGui"
-screenGui.ResetOnSpawn = false
+-- Get GUI elements
+local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+local reanimatorGui = playerGui:WaitForChild("Reanimator")
+local reanimButton = reanimatorGui:WaitForChild("Reanim")
 
-local button = Instance.new("TextButton")
-button.Name = "ReanimateButton"
-button.Size = UDim2.new(0, 200, 0, 50)
-button.Position = UDim2.new(0.5, -100, 0.8, 0)
-button.Text = "Re animate"
-button.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-button.TextColor3 = Color3.fromRGB(255,255,255)
-button.Font = Enum.Font.SourceSansBold
-button.TextSize = 28
-button.Parent = screenGui
+-- Add status and warning labels if not present
+local statusLabel = reanimatorGui:FindFirstChild("StatusLabel")
+if not statusLabel then
+    statusLabel = Instance.new("TextLabel")
+    statusLabel.Name = "StatusLabel"
+    statusLabel.Size = UDim2.new(0, 400, 0, 40)
+    statusLabel.Position = UDim2.new(0.5, -200, 0.8, -60)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.TextColor3 = Color3.fromRGB(255,255,0)
+    statusLabel.Font = Enum.Font.SourceSansBold
+    statusLabel.TextSize = 24
+    statusLabel.Text = ""
+    statusLabel.Parent = reanimatorGui
+end
 
-local statusLabel = Instance.new("TextLabel")
-statusLabel.Name = "StatusLabel"
-statusLabel.Size = UDim2.new(0, 400, 0, 40)
-statusLabel.Position = UDim2.new(0.5, -200, 0.8, -60)
-statusLabel.BackgroundTransparency = 1
-statusLabel.TextColor3 = Color3.fromRGB(255,255,0)
-statusLabel.Font = Enum.Font.SourceSansBold
-statusLabel.TextSize = 24
-statusLabel.Text = ""
-statusLabel.Parent = screenGui
+local warningLabel = reanimatorGui:FindFirstChild("WarningLabel")
+if not warningLabel then
+    warningLabel = Instance.new("TextLabel")
+    warningLabel.Name = "WarningLabel"
+    warningLabel.Size = UDim2.new(0, 400, 0, 30)
+    warningLabel.Position = UDim2.new(0.5, -200, 0.8, -100)
+    warningLabel.BackgroundTransparency = 1
+    warningLabel.TextColor3 = Color3.fromRGB(255,0,0)
+    warningLabel.Font = Enum.Font.SourceSansBold
+    warningLabel.TextSize = 22
+    warningLabel.Text = "WARNING: R6 ONLY! This script will not work with R15 avatars."
+    warningLabel.Parent = reanimatorGui
+end
 
-local warningLabel = Instance.new("TextLabel")
-warningLabel.Name = "WarningLabel"
-warningLabel.Size = UDim2.new(0, 400, 0, 30)
-warningLabel.Position = UDim2.new(0.5, -200, 0.8, -100)
-warningLabel.BackgroundTransparency = 1
-warningLabel.TextColor3 = Color3.fromRGB(255,0,0)
-warningLabel.Font = Enum.Font.SourceSansBold
-warningLabel.TextSize = 22
-warningLabel.Text = "WARNING: R6 ONLY! This script will not work with R15 avatars."
-warningLabel.Parent = screenGui
-
-screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+local FAST_SPEED = 250
 
 -- Utility: Cleanup previous dummy and welds
 local function cleanupPrevious()
@@ -226,7 +230,6 @@ local function dummyWeldToPlayer(dummy)
             weld.Part0 = dummyPart
             weld.Part1 = charPart
             if dummyPartName == "Head" then
-                -- Align player's head to dummy's head
                 weld.C0 = CFrame.new()
                 weld.C1 = dummyPart.CFrame:toObjectSpace(charPart.CFrame)
             else
@@ -327,7 +330,7 @@ local function reanimate()
     end
 end
 
-button.MouseButton1Click:Connect(function()
+reanimButton.MouseButton1Click:Connect(function()
     reanimate()
 end)
 
@@ -338,4 +341,7 @@ end)
 
 -- Initial status
 statusLabel.Text = "Ready to reanimate."
+
+"
+ReanimatorGuiLogic.Parent = Reanimator
 
