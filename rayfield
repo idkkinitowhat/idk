@@ -1,0 +1,679 @@
+--[[
+	VaporUI Custom Local Library (Open Source Enhanced & Neon Theme)
+	Version: 2.0.0
+	Author: [Your Name/Handle]
+	License: MIT (or similar open-source license)
+	Description: A highly-customizable, neon-themed local GUI library for Roblox.
+	- Built from the foundation of RayfieldLite.
+	- Features: Customizable Theme, Dragging, Tab System, and a wide array of controls.
+	- Local-Only: Does not rely on or enable exploits.
+	- Target Line Count: 1000+
+--]]
+
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+
+local Library = {}
+Library.__index = Library
+
+--------------------------------------------------------------------------------
+-- 🎨 THEME CONFIGURATION & CONSTANTS
+--------------------------------------------------------------------------------
+
+-- Define a central theme table for easy color changes (Neon/Vaporwave palette)
+local Theme = {
+	PrimaryBackground = Color3.fromHSV(0.6, 0.1, 0.15), -- Deep Navy/Purple
+	SecondaryBackground = Color3.fromHSV(0.6, 0.08, 0.22), -- Slightly Lighter Panel
+	Accent = Color3.fromHSV(0.8, 0.9, 1), -- Bright Magenta/Neon Pink (The Glow Color)
+	SecondaryAccent = Color3.fromHSV(0.35, 0.8, 1), -- Bright Cyan/Aqua
+	Text = Color3.new(1, 1, 1), -- White
+	InactiveElement = Color3.fromHSV(0.6, 0.1, 0.3), -- Dark Grey/Blue
+	ActiveElement = Color3.fromHSV(0.75, 0.6, 0.6), -- Medium Purple
+	GlowTransparency = 0.5,
+	GlowThickness = 2,
+	CornerRadius = 8,
+}
+
+local BASE_SIZE = UDim2.new(0, 750, 0, 500)
+local TAB_BAR_WIDTH = 180
+local TAB_HEIGHT = 40
+local CONTROL_HEIGHT = 36
+local CONTROL_PADDING = 8
+
+--------------------------------------------------------------------------------
+-- ⚙️ CORE UTILITY FUNCTIONS (Enhanced)
+--------------------------------------------------------------------------------
+
+-- Extended Instance Creator
+local function new(parent, class, props)
+	local o = Instance.new(class)
+	for k, v in pairs(props or {}) do pcall(function() o[k] = v end) end
+	if parent then o.Parent = parent end
+	return o
+end
+
+-- Function to apply a 'neon' glow effect using UIStroke with pulsing
+local function applyGlow(instance, color)
+	local stroke = new(instance, "UIStroke", {
+		Thickness = Theme.GlowThickness,
+		Color = color,
+		Transparency = Theme.GlowTransparency,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Round
+	})
+	
+	-- Subtle pulsing animation for the glow (cosmetic)
+	local tweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true, 0)
+	TweenService:Create(stroke, tweenInfo, {Transparency = Theme.GlowTransparency * 0.2}):Play()
+	
+	return stroke
+end
+
+-- Universal Dragging Function (More Robust)
+local function makeDraggable(instance, target)
+	local dragging, dragStart, startPos
+	local target = target or instance
+	local mouse = player:GetMouse()
+	
+	local function inputBegan(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = target.Position
+			
+			local conn; 
+			conn = RunService.Heartbeat:Connect(function()
+				if dragging then
+					local delta = mouse.Position - dragStart
+					local newPos = UDim2.new(
+						startPos.X.Scale, startPos.X.Offset + delta.X, 
+						startPos.Y.Scale, startPos.Y.Offset + delta.Y
+					)
+					target.Position = newPos
+				end
+			end)
+			
+			local function inputEnded(input)
+				if input.UserInputState == Enum.UserInputState.End and dragging then
+					dragging = false
+					conn:Disconnect()
+				end
+			end
+			
+			UserInputService.InputEnded:Wait()
+			input.Changed:Connect(inputEnded)
+		end
+	end
+	instance.InputBegan:Connect(inputBegan)
+end
+
+-- Canvas Size Updater (Essential for ScrollingFrames)
+local function createCanvasUpdater(scrollingFrame, listLayout)
+	local function updateCanvas()
+		local contentSize = listLayout.AbsoluteContentSize
+		scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + CONTROL_PADDING)
+	end
+	
+	-- Connect to updates and run initial update
+	listLayout.DidUpdate:Connect(updateCanvas)
+	RunService.Heartbeat:Wait() 
+	updateCanvas()
+	
+	return updateCanvas
+end
+
+--------------------------------------------------------------------------------
+-- 🖼️ BASE WINDOW & STRUCTURE
+--------------------------------------------------------------------------------
+
+function Library:CreateWindow(config)
+	local screenGui = new(player:WaitForChild("PlayerGui"), "ScreenGui", {
+		Name = config.Title or "VaporUI",
+		ResetOnSpawn = false,
+	})
+
+	local frame = new(screenGui, "Frame", {
+		Size = BASE_SIZE,
+		Position = UDim2.new(0.5, -BASE_SIZE.X.Offset / 2, 0.5, -BASE_SIZE.Y.Offset / 2),
+		BackgroundColor3 = Theme.PrimaryBackground,
+		BorderSizePixel = 0,
+	})
+	new(frame, "UICorner", {CornerRadius = UDim.new(0, Theme.CornerRadius)})
+	applyGlow(frame, Theme.Accent) -- Main frame glow
+
+	-- Top Bar
+	local topbar = new(frame, "Frame", {
+		Size = UDim2.new(1, 0, 0, 40), 
+		BackgroundColor3 = Theme.SecondaryBackground
+	})
+	
+	-- Apply corner only to top-left and top-right of the window
+	local cornerModifier = new(topbar, "UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalAlignment = Enum.HorizontalAlignment.Left,
+		Padding = UDim.new(0, 0)
+	})
+	topbar.Size = UDim2.new(1, 0, 0, 40 + Theme.CornerRadius) -- Extend slightly for corner effect
+	topbar.Position = UDim2.new(0, 0, 0, -Theme.CornerRadius)
+	
+	local titleLabel = new(topbar, "TextLabel", {
+		Size = UDim2.new(1, -20, 0, 40), Position = UDim2.new(0, 10, 0, Theme.CornerRadius),
+		Text = config.Title or "VAPOR UI - CUSTOM LUA LIBRARY",
+		TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
+		Font = Enum.Font.SourceSansBold, TextSize = 20, TextColor3 = Theme.Text,
+		TextStrokeColor3 = Theme.Accent,
+		TextStrokeTransparency = 0.8,
+	})
+
+	-- Draggable functionality
+	makeDraggable(topbar, frame)
+
+	-- Tabs container (Left Panel)
+	local tabBar = new(frame, "Frame", {
+		Size = UDim2.new(0, TAB_BAR_WIDTH, 1, -40), 
+		Position = UDim2.new(0, 0, 0, 40),
+		BackgroundColor3 = Theme.SecondaryBackground
+	})
+	new(tabBar, "UIListLayout", {
+		Padding = UDim.new(0, CONTROL_PADDING),
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+
+	-- Content pane (Right Area)
+	local contentPane = new(frame, "Frame", {
+		Size = UDim2.new(1, -TAB_BAR_WIDTH, 1, -40), 
+		Position = UDim2.new(0, TAB_BAR_WIDTH, 0, 40), 
+		BackgroundTransparency = 1
+	})
+	
+	local tabs = {}
+	self.tabs = tabs
+	local currentTab = nil -- Local to CreateWindow scope
+
+	--------------------------------------------------------------------------------
+	-- 📦 TAB CREATION & API
+	--------------------------------------------------------------------------------
+
+	function Library:CreateTab(name)
+		local btn = new(tabBar, "TextButton", {
+			Text = name, 
+			Size = UDim2.new(1, -CONTROL_PADDING*2, 0, TAB_HEIGHT),
+			BackgroundColor3 = Theme.InactiveElement, 
+			Font = Enum.Font.SourceSansBold,
+			TextSize = 16, 
+			TextColor3 = Theme.Text,
+			LayoutOrder = #tabBar:GetChildren() + 1,
+		})
+		new(btn, "UICorner", {CornerRadius = UDim.new(0, Theme.CornerRadius/2)})
+
+		-- Glowing border for tabs
+		local tabGlow = applyGlow(btn, Theme.SecondaryAccent)
+		tabGlow.Transparency = 1 -- Start transparent (inactive)
+
+		local sf = new(contentPane, "ScrollingFrame", {
+			Size = UDim2.new(1, -CONTROL_PADDING * 2, 1, -CONTROL_PADDING * 2), 
+			Position = UDim2.new(0, CONTROL_PADDING, 0, CONTROL_PADDING),
+			BackgroundTransparency = 1,
+			ScrollBarThickness = 8,
+			ScrollBarImageColor3 = Theme.Accent,
+		})
+		local listLayout = new(sf, "UIListLayout", {
+			Padding = UDim.new(0, CONTROL_PADDING),
+			HorizontalAlignment = Enum.HorizontalAlignment.Left,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		})
+		sf.Visible = false
+		local updateCanvas = createCanvasUpdater(sf, listLayout)
+
+		btn.MouseButton1Click:Connect(function()
+			-- Deselect current tab
+			if currentTab and currentTab.TabButton then 
+				currentTab.Visible = false 
+				currentTab.TabButton.BackgroundColor3 = Theme.InactiveElement
+				currentTab.TabGlow.Transparency = 1 
+			end
+			
+			-- Select new tab
+			currentTab = sf 
+			currentTab.TabButton = btn
+			currentTab.TabGlow = tabGlow
+			sf.Visible = true
+			
+			btn.BackgroundColor3 = Theme.ActiveElement
+			tabGlow.Transparency = Theme.GlowTransparency
+			updateCanvas()
+		end)
+		
+		-- Initial selection
+		if not currentTab then
+			btn:Fire()
+		end
+		
+		local api = {}
+		api.Parent = sf
+		local controlOrder = 1
+		
+		local function createControlBase(sizeY)
+			local f = new(sf, "Frame", {
+				Size = UDim2.new(1, 0, 0, sizeY or CONTROL_HEIGHT),
+				BackgroundTransparency = 1,
+				LayoutOrder = controlOrder,
+			})
+			controlOrder = controlOrder + 1
+			return f
+		end
+		
+		--------------------------------------------------------------------------------
+		-- 🚀 UI CONTROL COMPONENTS (Themed & Extended)
+		--------------------------------------------------------------------------------
+
+		-- Standard Label
+		function api:Label(text)
+			local f = createControlBase(20)
+			new(f, "TextLabel", {
+				Size = UDim2.new(1, 0, 1, 0),
+				Text = text,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				BackgroundTransparency = 1,
+				Font = Enum.Font.SourceSans, 
+				TextSize = 14, 
+				TextColor3 = Theme.Text
+			})
+		end
+		
+		-- Button with Hover Effect
+		function api:Button(text, callback)
+			local f = createControlBase(CONTROL_HEIGHT)
+			local b = new(f, "TextButton", {
+				Size = UDim2.new(1, 0, 1, 0),
+				Text = text,
+				BackgroundColor3 = Theme.InactiveElement,
+				Font = Enum.Font.SourceSansBold,
+				TextSize = 16,
+				TextColor3 = Theme.Text,
+			})
+			new(b, "UICorner", {CornerRadius = UDim.new(0, Theme.CornerRadius / 2)})
+			local buttonGlow = applyGlow(b, Theme.Accent)
+			buttonGlow.Transparency = 1
+			
+			local defaultColor = b.BackgroundColor3
+			
+			b.MouseEnter:Connect(function() 
+				b:TweenBackgroundColor3(Theme.ActiveElement, "Out", "Sine", 0.15, true)
+				buttonGlow.Transparency = Theme.GlowTransparency / 2
+			end)
+			b.MouseLeave:Connect(function() 
+				b:TweenBackgroundColor3(defaultColor, "Out", "Sine", 0.3, true)
+				buttonGlow.Transparency = 1
+			end)
+			
+			b.MouseButton1Click:Connect(function() pcall(callback) end)
+			return b
+		end
+
+		-- Toggle with Neon Indicator
+		function api:Toggle(text, default, callback)
+			local f = createControlBase(CONTROL_HEIGHT)
+			local state = default or false
+			
+			local label = new(f, "TextLabel", {
+				Size = UDim2.new(1, -CONTROL_HEIGHT, 1, 0), 
+				Text = text,
+				BackgroundTransparency = 1, 
+				Font = Enum.Font.SourceSans, 
+				TextSize = 15, 
+				TextColor3 = Theme.Text,
+				TextXAlignment = Enum.TextXAlignment.Left
+			})
+			
+			local box = new(f, "TextButton", {
+				Size = UDim2.new(0, CONTROL_HEIGHT, 0, CONTROL_HEIGHT), 
+				Position = UDim2.new(1, -CONTROL_HEIGHT, 0, 0),
+				BackgroundColor3 = Theme.InactiveElement,
+			})
+			new(box, "UICorner", {CornerRadius = UDim.new(1, 0)})
+			
+			local indicator = new(box, "Frame", {
+				Size = UDim2.new(0.6, 0, 0.6, 0),
+				Position = UDim2.new(0.5, -CONTROL_HEIGHT*0.3, 0.5, -CONTROL_HEIGHT*0.3),
+				BackgroundColor3 = Theme.Accent,
+			})
+			new(indicator, "UICorner", {CornerRadius = UDim.new(1, 0)})
+			applyGlow(indicator, Theme.Accent)
+			
+			local function update() 
+				local sizeScale = state and 0.6 or 0.2
+				local transparency = state and 0 or 1
+				
+				indicator:TweenSize(UDim2.new(sizeScale, 0, sizeScale, 0), "Out", "Quad", 0.2, true)
+				indicator:TweenPosition(UDim2.new(0.5, -CONTROL_HEIGHT * sizeScale / 2, 0.5, -CONTROL_HEIGHT * sizeScale / 2), "Out", "Quad", 0.2, true)
+				indicator:TweenTransparency(transparency, "Out", "Quad", 0.2, true)
+				box:TweenBackgroundColor3(state and Theme.ActiveElement or Theme.InactiveElement, "Out", "Quad", 0.2, true)
+			end
+			
+			box.MouseButton1Click:Connect(function() 
+				state = not state 
+				update() 
+				pcall(callback, state) 
+			end)
+			update() -- Initial state
+			
+			return {SetValue = function(newState) state = newState update() end, GetValue = function() return state end}
+		end
+
+		-- Slider with Live Value Display
+		function api:Slider(text, min, max, default, callback)
+			local SLIDER_HEIGHT = 45
+			local f = createControlBase(SLIDER_HEIGHT)
+			f.BackgroundColor3 = Theme.SecondaryBackground
+			new(f,"UICorner",{CornerRadius=UDim.new(0,Theme.CornerRadius/2)})
+
+			local value = default
+			
+			local lbl = new(f, "TextLabel", {
+				Text = text .. " (" .. default .. ")", 
+				Size = UDim2.new(1, 0, 0, 18),
+				BackgroundTransparency = 1, 
+				Font = Enum.Font.SourceSans, 
+				TextSize = 14, 
+				TextColor3 = Theme.Text, 
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Position = UDim2.new(0, CONTROL_PADDING, 0, 0)
+			})
+			
+			local bar = new(f, "Frame", {
+				Size = UDim2.new(1, -CONTROL_PADDING * 2, 0, 8), 
+				Position = UDim2.new(0, CONTROL_PADDING, 0, 25), 
+				BackgroundColor3 = Theme.InactiveElement
+			})
+			new(bar, "UICorner", {CornerRadius = UDim.new(0, 4)})
+			
+			local fill = new(bar, "Frame", {
+				Size = UDim2.new((default - min) / (max - min), 0, 1, 0), 
+				BackgroundColor3 = Theme.SecondaryAccent
+			})
+			new(fill, "UICorner", {CornerRadius = UDim.new(0, 4)})
+			
+			local knob = new(fill, "Frame", {
+				Size = UDim2.new(0, 12, 0, 12),
+				Position = UDim2.new(1, -6, 0.5, -6),
+				BackgroundColor3 = Theme.Accent,
+				BorderSizePixel = 0,
+			})
+			new(knob, "UICorner", {CornerRadius = UDim.new(1, 0)})
+			applyGlow(knob, Theme.Accent)
+			
+			local function setVal(v, fromInput)
+				value = math.clamp(v, min, max) 
+				value = math.floor(value * 10) / 10 -- Round to 1 decimal place
+				
+				lbl.Text = text .. " (" .. value .. ")" 
+				local scale = (value - min) / (max - min)
+				fill:TweenSize(UDim2.new(scale, 0, 1, 0), "Out", "Quad", 0.1, true)
+				
+				if fromInput then pcall(callback, value) end
+			end
+			
+			local dragging = false
+			local barAbsSizeX = bar.AbsoluteSize.X
+			local barAbsPosX = bar.AbsolutePosition.X
+			
+			bar.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+					dragging = true
+					knob:TweenSize(UDim2.new(0, 16, 0, 16), "Out", "Quad", 0.1, true) -- Pop effect
+					
+					local con; 
+					con = RunService.Heartbeat:Connect(function()
+						if dragging then
+							local rel = (UserInputService:GetMouseLocation().X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X
+							local newValue = min + rel * (max - min)
+							setVal(newValue, true)
+						end
+					end)
+					
+					local function inputEnded(input)
+						if input.UserInputState == Enum.UserInputState.End and dragging then
+							dragging = false
+							con:Disconnect()
+							knob:TweenSize(UDim2.new(0, 12, 0, 12), "Out", "Quad", 0.1, true)
+						end
+					end
+					
+					UserInputService.InputEnded:Wait()
+					input.Changed:Connect(inputEnded)
+				end
+			end)
+			
+			setVal(default, true) -- Initial set and callback
+			return {SetValue = setVal, GetValue = function() return value end}
+		end
+
+		-- Dropdown (Simplified version; full is very long)
+		function api:Dropdown(text, options, default, callback)
+			local f = createControlBase(CONTROL_HEIGHT + 100) -- Extra room for the dropdown content
+			f.Size = UDim2.new(1, 0, 0, CONTROL_HEIGHT)
+			f.BackgroundColor3 = Theme.InactiveElement
+			new(f, "UICorner", {CornerRadius = UDim.new(0, Theme.CornerRadius / 2)})
+			
+			local selectedOption = default or options[1]
+			
+			local btn = new(f, "TextButton", {
+				Text = text .. ": " .. selectedOption, 
+				Size = UDim2.new(1, 0, 1, 0),
+				BackgroundColor3 = f.BackgroundColor3,
+				Font = Enum.Font.SourceSansBold, 
+				TextSize = 16, 
+				TextColor3 = Theme.Text,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Text = text .. ": " .. selectedOption,
+			})
+			new(btn, "UICorner", {CornerRadius = UDim.new(0, Theme.CornerRadius / 2)})
+
+			local listContainer = new(f, "ScrollingFrame", {
+				Size = UDim2.new(1, 0, 0, 100),
+				Position = UDim2.new(0, 0, 1, 0),
+				BackgroundTransparency = 0,
+				BackgroundColor3 = Theme.SecondaryBackground,
+				Visible = false,
+				ZIndex = 2,
+				ScrollBarThickness = 6,
+			})
+			new(listContainer, "UIListLayout", {Padding = UDim.new(0, 2)})
+			new(listContainer, "UICorner", {CornerRadius = UDim.new(0, Theme.CornerRadius / 2)})
+			
+			local isOpen = false
+			local optionsList = {}
+			
+			for i, option in ipairs(options) do
+				local optionBtn = new(listContainer, "TextButton", {
+					Text = option,
+					Size = UDim2.new(1, 0, 0, 20),
+					BackgroundColor3 = Theme.SecondaryBackground,
+					Font = Enum.Font.SourceSans,
+					TextSize = 14,
+					TextColor3 = Theme.Text,
+					ZIndex = 2,
+				})
+				
+				optionBtn.MouseButton1Click:Connect(function()
+					selectedOption = option
+					btn.Text = text .. ": " .. selectedOption
+					listContainer.Visible = false
+					f.Size = UDim2.new(1, 0, 0, CONTROL_HEIGHT)
+					isOpen = false
+					pcall(callback, selectedOption)
+				end)
+				table.insert(optionsList, optionBtn)
+			end
+			
+			btn.MouseButton1Click:Connect(function()
+				isOpen = not isOpen
+				listContainer.Visible = isOpen
+				
+				local targetY = isOpen and CONTROL_HEIGHT + 100 or CONTROL_HEIGHT
+				f:TweenSize(UDim2.new(1, 0, 0, targetY), "Out", "Quad", 0.2, true)
+				updateCanvas() -- Force canvas update for the tab
+			end)
+			
+			pcall(callback, selectedOption) -- Initial callback
+			return {SetValue = function(newVal) selectedOption = newVal end, GetValue = function() return selectedOption end}
+		end
+
+		-- Keybind Component (Essential for "open-source" feature sets)
+		function api:Keybind(text, defaultKey, callback)
+			local f = createControlBase(CONTROL_HEIGHT)
+			local state = defaultKey or Enum.KeyCode.None
+			local waitingForInput = false
+
+			local label = new(f, "TextLabel", {
+				Size = UDim2.new(1, -80, 1, 0), 
+				Text = text,
+				BackgroundTransparency = 1, 
+				Font = Enum.Font.SourceSans, 
+				TextSize = 15, 
+				TextColor3 = Theme.Text,
+				TextXAlignment = Enum.TextXAlignment.Left
+			})
+			
+			local keyBtn = new(f, "TextButton", {
+				Size = UDim2.new(0, 80, 0, CONTROL_HEIGHT), 
+				Position = UDim2.new(1, -80, 0, 0),
+				BackgroundColor3 = Theme.InactiveElement,
+				Font = Enum.Font.SourceSansBold,
+				TextSize = 14,
+				TextColor3 = Theme.Text,
+			})
+			new(keyBtn, "UICorner", {CornerRadius = UDim.new(0, Theme.CornerRadius / 2)})
+			
+			local glow = applyGlow(keyBtn, Theme.SecondaryAccent)
+			glow.Transparency = 1
+
+			local function updateText()
+				keyBtn.Text = state.Name:gsub("Key", "")
+				if state == Enum.KeyCode.None then keyBtn.Text = "NONE" end
+			end
+
+			local con = nil
+			local function startListening()
+				waitingForInput = true
+				keyBtn.Text = "..."
+				glow.Transparency = Theme.GlowTransparency / 2
+				
+				con = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+					if not gameProcessed then
+						if input.UserInputType == Enum.UserInputType.Keyboard or input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.MouseButton3 then
+							state = input.KeyCode or input.UserInputType
+							
+							if state == Enum.KeyCode.Escape then
+								state = Enum.KeyCode.None -- Use escape to clear keybind
+							end
+							
+							waitingForInput = false
+							glow.Transparency = 1
+							updateText()
+							pcall(callback, state)
+							con:Disconnect()
+							con = nil
+						end
+					end
+				end)
+			end
+
+			keyBtn.MouseButton1Click:Connect(function()
+				if waitingForInput then
+					if con then con:Disconnect() end
+					waitingForInput = false
+					glow.Transparency = 1
+				else
+					startListening()
+				end
+				updateText()
+			end)
+			
+			updateText()
+			return {SetValue = function(newKey) state = newKey updateText() end, GetValue = function() return state end}
+		end
+
+		return api
+	end
+
+	--------------------------------------------------------------------------------
+	-- ⭕ CIRCLE TOGGLE & ANIMATION
+	--------------------------------------------------------------------------------
+
+	-- A self-contained module for the toggle button
+	local function createToggleModule()
+		local overlay = Instance.new("ScreenGui", player.PlayerGui)
+		overlay.Name = "VaporUIToggle" 
+		overlay.ResetOnSpawn = false
+		
+		local circle = new(overlay, "Frame", {
+			Size = UDim2.new(0, 60, 0, 60), 
+			Position = UDim2.new(0, 20, 0, 20),
+			BackgroundColor3 = Theme.PrimaryBackground,
+			BorderSizePixel = 0,
+		})
+		new(circle, "UICorner", {CornerRadius = UDim.new(1, 0)})
+		
+		-- Use a UIStroke for the pulsing neon ring
+		local stroke = new(circle, "UIStroke", {
+			Thickness = 3,
+			Color = Theme.Accent,
+			Transparency = 0.4,
+		})
+		
+		local label = new(circle, "TextLabel", {
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Text = config.ToggleText or "V", -- Use 'V' for VaporUI
+			Font = Enum.Font.SourceSansBold, 
+			TextSize = 28, 
+			TextColor3 = Theme.Text,
+			TextStrokeColor3 = Theme.Accent,
+			TextStrokeTransparency = 0.8,
+		})
+		
+		-- Continuous pulsing animation for the glow
+		TweenService:Create(stroke, TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Transparency = 0.1}):Play()
+		
+		-- Size change animation (subtle breathing effect)
+		local defaultSize = circle.Size
+		TweenService:Create(circle, TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Size = UDim2.new(0, 66, 0, 66)}):Play()
+
+		-- Toggle logic
+		local open = true
+		local function toggle() 
+			open = not open 
+			screenGui.Enabled = open 
+			
+			if open then 
+				label.Text = config.ToggleText or "V" 
+			else
+				label.Text = config.ClosedText or "..."
+			end
+		end
+		
+		-- Input connections
+		circle.InputBegan:Connect(function(i) 
+			if i.UserInputType == Enum.UserInputType.MouseButton1 then toggle() end 
+		end)
+		
+		UserInputService.InputBegan:Connect(function(i, gp) 
+			if not gp and i.KeyCode == (config.ToggleKey or Enum.KeyCode.RightShift) then toggle() end 
+		end)
+
+		-- Circle dragging (using the enhanced utility function)
+		makeDraggable(circle, circle)
+	end
+	
+	createToggleModule()
+
+	return setmetatable(self, Library)
+end
+
+return setmetatable({}, Library)
